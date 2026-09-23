@@ -1,5 +1,5 @@
-# Discord 429 Watchdog - WARP IP rotasyonu + kontrollu kurtarma
-# Cok kullanici destekler: log/state kullaniciya ozel, script ortak
+# Discord 429 Watchdog - WARP IP rotation + controlled recovery
+# Multi-user safe: log/state are per-user, script can be shared
 param(
     [int]$CooldownMinutes = 12,
     [int]$CheckIntervalSeconds = 30,
@@ -15,7 +15,7 @@ $MaxRotationsPerHour = 3
 $mutexName = "Local\$($env:USERNAME)_Discord429Watchdog"
 $mutex = New-Object System.Threading.Mutex($false, $mutexName)
 if (-not $mutex.WaitOne(0)) {
-    Write-Host "Zaten calisiyor, cikis."
+    Write-Host "Already running, exiting."
     exit 0
 }
 
@@ -52,7 +52,7 @@ function Test-Recent429 {
 }
 
 function Rotate-WarpIp {
-    Write-Log "WARP IP rotasyonu baslatiliyor..."
+    Write-Log "Starting WARP IP rotation..."
     warp-cli disconnect 2>&1 | Out-Null
     Start-Sleep -Seconds 3
     warp-cli connect 2>&1 | Out-Null
@@ -60,11 +60,11 @@ function Rotate-WarpIp {
     $status = (warp-cli status 2>&1 | Out-String).Trim().Replace("`r`n", " ")
     $trace = curl.exe -s --max-time 8 "https://www.cloudflare.com/cdn-cgi/trace"
     $ip = ($trace | Select-String "^ip=").ToString().Split("=")[1]
-    Write-Log "WARP: $status | Yeni IP: $ip"
+    Write-Log "WARP: $status | New IP: $ip"
 }
 
 function Restart-DiscordOnce {
-    Write-Log "Discord tek seferlik kontrollu restart..."
+    Write-Log "Performing single controlled Discord restart..."
     Get-Process Discord -ErrorAction SilentlyContinue | Stop-Process -Force
     Start-Sleep -Seconds 4
     $upd = Join-Path $env:LOCALAPPDATA "Discord\Update.exe"
@@ -75,7 +75,7 @@ function Restart-DiscordOnce {
     }
 }
 
-Write-Log "=== Watchdog basladi (cooldown=${CooldownMinutes}m, interval=${CheckIntervalSeconds}s, user=$($env:USERNAME)) ==="
+Write-Log "=== Watchdog started (cooldown=${CooldownMinutes}m, interval=${CheckIntervalSeconds}s, user=$($env:USERNAME)) ==="
 
 try {
     while ($true) {
@@ -89,24 +89,24 @@ try {
 
         if ($Force -or ((Test-Recent429) -and -not $inCooldown)) {
             if ($rotationsLastHour -ge $MaxRotationsPerHour) {
-                Write-Log "Saatlik rotasyon limiti doldu ($rotationsLastHour), beklemede..."
+                Write-Log "Hourly rotation limit reached ($rotationsLastHour), waiting..."
             } else {
-                Write-Log "429/hata algilandi! Kurtarma basliyor..."
+                Write-Log "429/error detected! Starting recovery..."
                 Rotate-WarpIp
 
                 Start-Sleep -Seconds 90
                 if (Test-Recent429) {
-                    Write-Log "Hala hata var, Discord restart yapiliyor..."
+                    Write-Log "Errors persist, restarting Discord..."
                     Restart-DiscordOnce
                     Start-Sleep -Seconds 45
                 } else {
-                    Write-Log "Hata gecti, Discord'a dokunulmadi."
+                    Write-Log "Errors cleared, Discord left running."
                 }
 
                 $state.LastAction = $now.ToString("o")
                 $state.Rotations = @($state.Rotations | Where-Object { [datetime]$_ -gt $now.AddHours(-1) }) + @($now.ToString("o"))
                 Save-State $state
-                Write-Log "Kurtarma tamamlandi. Cooldown ${CooldownMinutes} dk."
+                Write-Log "Recovery complete. Cooldown ${CooldownMinutes}m."
             }
         }
 

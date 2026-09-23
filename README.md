@@ -4,9 +4,9 @@
 
 # Discord 429 Watchdog
 
-**Discord "Messages Failed To Load" / HTTP 429 için otomatik kurtarma**
+**Automatic recovery for Discord "Messages Failed To Load" / HTTP 429 errors**
 
-Cloudflare WARP üzerinde rate-limit yiyen hesapları kurtaran, IP rotasyonu yapan Windows watchdog.
+A Windows watchdog that recovers rate-limited Discord sessions behind Cloudflare WARP by rotating the exit IP.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-blue.svg)](#)
@@ -14,25 +14,25 @@ Cloudflare WARP üzerinde rate-limit yiyen hesapları kurtaran, IP rotasyonu yap
 [![Cloudflare WARP](https://img.shields.io/badge/Cloudflare-WARP-F38020.svg)](https://1.1.1.1/)
 [![Discord](https://img.shields.io/badge/Discord-429%20fix-5865F2.svg)](#)
 
-[Özellikler](#özellikler) •
-[Hızlı Başlangıç](#hızlı-başlangıç) •
-[Nasıl Çalışır?](#nasıl-çalışır) •
-[Parametreler](#parametreler) •
-[SSS](#sss)
+[Features](#features) •
+[Quick Start](#quick-start) •
+[How It Works](#how-it-works) •
+[Parameters](#parameters) •
+[FAQ](#faq)
 
 </div>
 
 ---
 
-## Sorun
+## The Problem
 
-Discord'da mesajlar yüklenmiyor:
+Discord messages fail to load:
 
 <p align="center">
-  <img src="assets/messages-failed-to-load.png" alt="Discord Messages Failed To Load hatası" width="640">
+  <img src="assets/messages-failed-to-load.png" alt="Discord Messages Failed To Load error" width="640">
 </p>
 
-Konsolda / log'da:
+In the console / logs:
 
 ```
 HTTPResponseError: GET /users/xxx/profile [429]
@@ -40,147 +40,148 @@ HTTPResponseError: POST /channels/xxx/messages/xxx/ack [429]
 [MessageActionCreators] Failed to fetch messages for ...
 ```
 
-### Neden olur?
+### Why it happens
 
-| Adım | Açıklama |
-|------|----------|
-| 1 | ISP (DNS/SNI DPI) Discord'u engeller → **WARP gerekir** |
-| 2 | WARP sizi datacenter IP'si ile çıkarır (ör. `104.28.x.x`) |
-| 3 | Discord bu IP havuzunu agresif rate-limit'ler → **429** |
-| 4 | `Retry-After: 0` + sürekli retry = "Messages Failed To Load" |
+| Step | What goes wrong |
+|------|-----------------|
+| 1 | ISP blocks Discord (DNS/SNI DPI) → **WARP is required** |
+| 2 | WARP egresses you through a datacenter IP (e.g. `104.28.x.x`) |
+| 3 | Discord aggressively rate-limits those IP pools → **429** |
+| 4 | `Retry-After: 0` + endless retries = "Messages Failed To Load" |
 
-Tek seferlik elle çözüm: `warp-cli disconnect` → `connect` (bazen yeni IP yeter).
+Manual one-shot fix: `warp-cli disconnect` → `connect` (sometimes a new IP is enough).
 
-**Bu araç bunu otomatik ve kontrollü yapar.**
+**This tool automates that recovery safely.**
 
 ---
 
-## Çözüm
+## Solution
 
 ```
-429 algıla → WARP IP rotasyonu → gerekirse Discord restart → cooldown
+detect 429 → rotate WARP IP → restart Discord if needed → cooldown
 ```
 
-- ⏱ 12 dk cooldown (spam yok)
-- 🔁 Saatlik en fazla 3 rotasyon
-- 🧑‍🤝‍🧑 Her Windows kullanıcısı kendi instance'ını çalıştırır
-- 🔒 Mutex ile çift çalışma engelli
+- ⏱ 12-minute cooldown (no spam)
+- 🔁 Max 3 rotations per hour
+- 🧑‍🤝‍🧑 Each Windows user runs their own instance
+- 🔒 Mutex prevents double runs
 
 ---
 
-## Özellikler
+## Features
 
-- [x] Discord `renderer_js.log` üzerinden `429` / `Failed to fetch messages` algılama
-- [x] Otomatik `warp-cli disconnect` → `connect` (IP rotasyonu)
-- [x] Hâlâ hata varsa tek seferlik Discord restart
-- [x] Scheduled Task ile **tüm kullanıcılar** için login'de otomatik başlangıç
-- [x] Manuel çalıştırma (`.bat` / `.lnk`)
-- [x] Kaldırma script'i (`kaldir.bat`)
-- [x] Kullanıcıya özel log + state (`%LOCALAPPDATA%`)
-- [x] MIT lisanslı, tek script, bağımlılık yok (PowerShell 5.1+)
+- [x] Detects `429` / `Failed to fetch messages` in Discord `renderer_js.log`
+- [x] Automatic `warp-cli disconnect` → `connect` (IP rotation)
+- [x] Single controlled Discord restart if errors persist
+- [x] Scheduled Task starts on **every user** logon
+- [x] Manual runner (`.bat` / shortcut)
+- [x] Uninstaller (`uninstall.bat`)
+- [x] Per-user log + state (`%LOCALAPPDATA%`)
+- [x] MIT licensed, single script, no dependencies (PowerShell 5.1+)
 
 ---
 
-## Hızlı Başlangıç
+## Quick Start
 
-### Yöntem 1 — Otomatik kurulum (öneri)
+### Option 1 — Automated install (recommended)
 
 ```powershell
 git clone https://github.com/brkNx/discord-429-watchdog-warp-zero-trust--loading-.git
 cd discord-429-watchdog-warp-zero-trust--loading-
-# kur.bat → sağ tık → Yönetici olarak çalıştır
+# install.bat → right-click → Run as administrator
 ```
 
-Veya repo sayfasından **Code → Download ZIP** indirip `kur.bat` dosyasına **Yönetici olarak çalıştır** deyin.
+Or download **Code → Download ZIP** from the repo page and run `install.bat` **as administrator**.
 
-### Yöntem 2 — Manuel
+### Option 2 — Manual run
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\Discord429Watchdog.ps1
 ```
 
-### Yöntem 3 — Kaldır
+### Option 3 — Uninstall
 
-`kaldir.bat` → **Yönetici olarak çalıştır**
+`uninstall.bat` → **Run as administrator**
 
 ---
 
-## Parametreler
+## Parameters
 
-| Parametre | Varsayılan | Açıklama |
-|-----------|------------|----------|
-| `-CheckIntervalSeconds` | `30` | Log kontrol aralığı (sn) |
-| `-CooldownMinutes` | `12` | Kurtarma sonrası bekleme (dk) |
-| `-Once` | — | Tek kontrol yapıp çık |
-| `-Force` | — | 429 beklemeden hemen kurtar (tek sefer) |
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `-CheckIntervalSeconds` | `30` | Log check interval (seconds) |
+| `-CooldownMinutes` | `12` | Wait after recovery (minutes) |
+| `-Once` | — | Single check then exit |
+| `-Force` | — | Recover immediately without waiting for a 429 (single run) |
 
-Örnek:
+Examples:
 
 ```powershell
-# Agresif: 15 sn kontrol, 10 dk cooldown
+# Aggressive: check every 15s, 10m cooldown
 .\Discord429Watchdog.ps1 -CheckIntervalSeconds 15 -CooldownMinutes 10
 
-# Tek seferlik test
+# One-shot test
 .\Discord429Watchdog.ps1 -Force -Once
 ```
 
 ---
 
-## Nasıl Çalışır?
+## How It Works
 
 ```mermaid
 flowchart TD
-    A[Watchdog baslar] --> B{Son 3 dk'da 429 var mi?}
-    B -->|Hayir| C[30 sn bekle]
+    A[Watchdog starts] --> B{429 in last 3 min?}
+    B -->|No| C[Sleep 30s]
     C --> B
-    B -->|Evet| D{Cooldown icinde mi?}
-    D -->|Evet| C
-    D -->|Hayir| E{Saatlik < 3 rotasyon?}
-    E -->|Hayir| C
-    E -->|Evet| F[WARP disconnect + connect]
-    F --> G[90 sn bekle]
-    G --> H{Hala 429?}
-    H -->|Evet| I[Discord restart]
-    H -->|Hayir| J[Dokunma]
-    I --> K[State guncelle + 12 dk cooldown]
+    B -->|Yes| D{In cooldown?}
+    D -->|Yes| C
+    D -->|No| E{Less than 3 rotations this hour?}
+    E -->|No| C
+    E -->|Yes| F[WARP disconnect + connect]
+    F --> G[Wait 90s]
+    G --> H{Still 429?}
+    H -->|Yes| I[Restart Discord]
+    H -->|No| J[Leave Discord alone]
+    I --> K[Update state + 12m cooldown]
     J --> K
     K --> C
 ```
 
 ---
 
-## Dosya Yapısı
+## File Structure
 
 ```
 discord-429-watchdog/
-├── Discord429Watchdog.ps1    # Ana script (watchdog)
-├── Discord429Watchdog.bat    # Manuel çalıştırıcı
-├── kur.bat                   # Scheduled Task kaydı (admin)
-├── kaldir.bat                # Görevi siler (admin)
+├── Discord429Watchdog.ps1    # Main watchdog script
+├── Discord429Watchdog.bat    # Manual runner
+├── install.bat               # Registers Scheduled Task (admin)
+├── uninstall.bat             # Removes the task (admin)
 ├── assets/
 │   ├── logo.svg
 │   └── messages-failed-to-load.png
 ├── README.md
+├── LICENSE
 └── .gitignore
 ```
 
 ---
 
-## Log / Tanı
+## Logs & Diagnostics
 
-| Dosya | Yol |
-|-------|-----|
+| File | Path |
+|------|------|
 | Watchdog log | `%LOCALAPPDATA%\discord-429-watchdog.log` |
 | State | `%LOCALAPPDATA%\discord-429-watchdog.state` |
 | Discord log | `%APPDATA%\discord\logs\renderer_js.log` |
 
-İzle:
+Watch live:
 
 ```powershell
 Get-Content "$env:LOCALAPPDATA\discord-429-watchdog.log" -Wait
 ```
 
-Görev durumu:
+Task status:
 
 ```powershell
 Get-ScheduledTask -TaskName Discord429Watchdog
@@ -188,35 +189,35 @@ Get-ScheduledTask -TaskName Discord429Watchdog
 
 ---
 
-## SSS
+## FAQ
 
-**WARP olmadan çalışır mı?**  
-Hayır. ISP engelini WARP aşar; watchdog sadece WARP IP'sine gelen 429 rate-limit'ini çözer.
+**Does it work without WARP?**  
+No. WARP is what bypasses the ISP block; the watchdog only fixes 429 rate-limits on the WARP egress IP.
 
-**Zero Trust / Teams organizasyonunda?**  
-Evet. `warp-cli disconnect/connect` organizasyonu bozmaz. Endpoint değiştirmek privileged ister — bu script sadece reconnect yapar.
+**Does it work with Zero Trust / Teams?**  
+Yes. `warp-cli disconnect/connect` does not break enrollment. Changing the tunnel endpoint requires privileged mode — this script only reconnects.
 
-**Her kullanıcıyı etkiler mi?**  
-Hayır. Script ortak (`ProgramData`), log/state ve mutex **kullanıcıya özeldir**. Her hesap kendi Discord'u için ayrı çalışır.
+**Does it affect every user on the PC?**  
+The script can live in a shared folder, but log/state and the mutex are **per user**. Each account recovers its own Discord session.
 
-**429 saatlik limiti aşılırsa?**  
-Watchdog bekleme moduna geçer; spam yapmaz. Cooldown sonra tekrar dener.
+**What if the hourly rotation limit is hit?**  
+The watchdog backs off and does not spam. It retries after cooldown.
 
-**Saatlik 3 rotasyon yetmezse?**  
-`MaxRotationsPerHour` değerini script içinde artırabilirsiniz (varsayılan spam koruması).
+**Can I raise the 3 rotations/hour cap?**  
+Yes — increase `MaxRotationsPerHour` in the script (default is anti-spam).
 
 ---
 
-## Gereksinimler
+## Requirements
 
 - Windows 10 / 11
-- [Cloudflare WARP](https://1.1.1.1/) (`warp-cli` PATH'te)
-- Discord (masaüstü)
-- PowerShell 5.1+ (Windows ile gelir)
+- [Cloudflare WARP](https://1.1.1.1/) (`warp-cli` on PATH)
+- Discord desktop app
+- PowerShell 5.1+ (ships with Windows)
 
 ---
 
-## Lisans
+## License
 
 [MIT](LICENSE) © [brkNx](https://github.com/brkNx)
 
@@ -224,8 +225,8 @@ Watchdog bekleme moduna geçer; spam yapmaz. Cooldown sonra tekrar dener.
 
 <div align="center">
 
-⭐ Bu proje işine yaradıysa **star** atmayı unutma.
+⭐ If this saved your Discord, give it a star.
 
-Made for Discord + WARP users who hit **429**.
+Built for Discord + WARP users who hit **429**.
 
 </div>
