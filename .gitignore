@@ -1,0 +1,7 @@
+﻿# Logs / state
+*.log
+*.state
+
+# OS
+Thumbs.db
+.DS_Store
