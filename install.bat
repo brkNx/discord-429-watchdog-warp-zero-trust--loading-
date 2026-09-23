@@ -4,7 +4,7 @@ echo ============================================
 echo   Discord 429 Watchdog - Install
 echo ============================================
 echo.
-echo A Scheduled Task will be registered for ALL users on this PC.
+echo A Scheduled Task will be registered for this PC.
 echo Running as administrator is recommended.
 echo.
 
@@ -34,5 +34,5 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "Write-Host ('Status: ' + (Get-ScheduledTask -TaskName 'Discord429Watchdog').State)"
 
 echo.
-echo Installation complete! It now starts automatically on every user logon.
+echo Installation complete! It now starts automatically on user logon.
 pause

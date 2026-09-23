@@ -111,6 +111,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Discord429Watchdog.ps1
 |-----------|---------|-------------|
 | `-CheckIntervalSeconds` | `30` | Log check interval (seconds) |
 | `-CooldownMinutes` | `12` | Wait after recovery (minutes) |
+| `-PostRotationWaitSeconds` | `90` | Wait time after IP rotation before verifying recovery (seconds) |
 | `-Once` | — | Single check then exit |
 | `-Force` | — | Recover immediately without waiting for a 429 (single run) |
 
