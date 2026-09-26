@@ -61,8 +61,8 @@ Manual one-shot fix: `warp-cli disconnect` → `connect` (sometimes a new IP is 
 detect 429 → rotate WARP IP → restart Discord if needed → cooldown
 ```
 
-- ⏱ 12-minute cooldown (no spam)
-- 🔁 Max 3 rotations per hour
+- ⏱ 3-minute cooldown (no spam)
+- 🔁 Max 15 rotations per hour
 - 🧑‍🤝‍🧑 Each Windows user runs their own instance
 - 🔒 Mutex prevents double runs
 
@@ -71,6 +71,7 @@ detect 429 → rotate WARP IP → restart Discord if needed → cooldown
 ## Features
 
 - [x] Detects `429` / `Failed to fetch messages` in Discord `renderer_js.log`
+- [x] Automatic route healing (restores split-tunnel Discord routes on WARP interface)
 - [x] Automatic `warp-cli disconnect` → `connect` (IP rotation)
 - [x] Single controlled Discord restart if errors persist
 - [x] Scheduled Task starts on **every user** logon
@@ -109,9 +110,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Discord429Watchdog.ps1
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `-CheckIntervalSeconds` | `30` | Log check interval (seconds) |
-| `-CooldownMinutes` | `12` | Wait after recovery (minutes) |
-| `-PostRotationWaitSeconds` | `90` | Wait time after IP rotation before verifying recovery (seconds) |
+| `-CheckIntervalSeconds` | `20` | Log check interval (seconds) |
+| `-CooldownMinutes` | `3` | Wait after recovery (minutes) |
+| `-PostRotationWaitSeconds` | `15` | Wait time after IP rotation before verifying recovery (seconds) |
 | `-Once` | — | Single check then exit |
 | `-Force` | — | Recover immediately without waiting for a 429 (single run) |
 
