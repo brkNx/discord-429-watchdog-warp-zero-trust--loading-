@@ -34,7 +34,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$settings1 = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit ([TimeSpan]::Zero);" ^
   "Register-ScheduledTask -TaskName 'Discord429Watchdog' -Action $action1 -Trigger $trigger1 -Settings $settings1 -Force -Description 'Discord 429 automatic recovery' | Out-Null;" ^
   "$action2 = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File \"' + $routeScript + '\"');" ^
-  "$trigger2 = New-ScheduledTaskTrigger -AtLogOn;" ^
+  "$trigger2 = @((New-ScheduledTaskTrigger -AtStartup), (New-ScheduledTaskTrigger -AtLogOn));" ^
   "$principal2 = New-ScheduledTaskPrincipal -GroupId 'BUILTIN\Administrators' -RunLevel Highest;" ^
   "$settings2 = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit ([TimeSpan]::FromMinutes(2));" ^
   "Register-ScheduledTask -TaskName 'DiscordWarpRoutes' -Action $action2 -Trigger $trigger2 -Principal $principal2 -Settings $settings2 -Force -Description 'Discord WARP route helper' | Out-Null;" ^
