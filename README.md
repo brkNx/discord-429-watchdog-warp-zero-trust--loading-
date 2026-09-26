@@ -132,19 +132,19 @@ Examples:
 
 ```mermaid
 flowchart TD
-    A[Watchdog starts] --> B{429 in last 3 min?}
-    B -->|No| C[Sleep 30s]
+    A[Watchdog starts] --> B{429 in last 2 min?}
+    B -->|No| C[Auto-heal routes + Sleep 20s]
     C --> B
     B -->|Yes| D{In cooldown?}
     D -->|Yes| C
-    D -->|No| E{Less than 3 rotations this hour?}
+    D -->|No| E{Less than 15 rotations this hour?}
     E -->|No| C
-    E -->|Yes| F[WARP disconnect + connect]
-    F --> G[Wait 90s]
+    E -->|Yes| F[WARP reconnect + restore routes]
+    F --> G[Wait 15s]
     G --> H{Still 429?}
     H -->|Yes| I[Restart Discord]
     H -->|No| J[Leave Discord alone]
-    I --> K[Update state + 12m cooldown]
+    I --> K[Update state + 3m cooldown]
     J --> K
     K --> C
 ```
@@ -156,9 +156,10 @@ flowchart TD
 ```
 discord-429-watchdog/
 ├── Discord429Watchdog.ps1    # Main watchdog script
+├── route-fix.ps1             # Elevated WARP route-healing helper
 ├── Discord429Watchdog.bat    # Manual runner
-├── install.bat               # Registers Scheduled Task (admin)
-├── uninstall.bat             # Removes the task (admin)
+├── install.bat               # Installs to ProgramData & registers tasks (admin)
+├── uninstall.bat             # Cleanly removes tasks & installed files (admin)
 ├── assets/
 │   ├── logo.svg
 │   └── messages-failed-to-load.png
@@ -200,13 +201,16 @@ No. WARP is what bypasses the ISP block; the watchdog only fixes 429 rate-limits
 Yes. `warp-cli disconnect/connect` does not break enrollment. Changing the tunnel endpoint requires privileged mode — this script only reconnects.
 
 **Does it affect every user on the PC?**  
-The script can live in a shared folder, but log/state and the mutex are **per user**. Each account recovers its own Discord session.
+`install.bat` sets up the script in `C:\ProgramData\Discord429Watchdog`, so every Windows user has access. When any user logs in, their own watchdog instance launches. Log/state and the mutex are strictly **per user**.
+
+**Can I delete the downloaded git/zip folder after running install.bat?**  
+Yes. `install.bat` copies all necessary files to `C:\ProgramData\Discord429Watchdog`, so the scheduled task is completely independent of where the repo was initially downloaded.
 
 **What if the hourly rotation limit is hit?**  
-The watchdog backs off and does not spam. It retries after cooldown.
+The watchdog backs off to avoid thrashing and retries after the 3-minute cooldown.
 
-**Can I raise the 3 rotations/hour cap?**  
-Yes — increase `MaxRotationsPerHour` in the script (default is anti-spam).
+**Can I customize the 15 rotations/hour cap?**  
+Yes — adjust `MaxRotationsPerHour` in `Discord429Watchdog.ps1` (default is 15).
 
 ---
 
