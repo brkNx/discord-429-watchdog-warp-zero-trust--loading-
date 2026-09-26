@@ -62,12 +62,30 @@ function Save-State($state) {
 
 function Restore-WarpRoutes {
     try {
+        $warpIf = Get-NetIPInterface -InterfaceAlias 'CloudflareWARP' -AddressFamily IPv4 -ErrorAction SilentlyContinue
+        if (-not $warpIf -or $warpIf.ConnectionState -ne 'Connected') { return }
+
         # Check if the Discord prefix exists on CloudflareWARP interface
         $route = Get-NetRoute -DestinationPrefix '162.159.0.0/16' -InterfaceAlias 'CloudflareWARP' -ErrorAction SilentlyContinue
         if (-not $route) {
-            Write-Log "Discord WARP routes missing. Triggering DiscordWarpRoutes task..."
-            Start-ScheduledTask -TaskName "DiscordWarpRoutes" -ErrorAction SilentlyContinue
-            Start-Sleep -Seconds 2
+            $task = Get-ScheduledTask -TaskName "DiscordWarpRoutes" -ErrorAction SilentlyContinue
+            if ($task) {
+                Write-Log "Discord WARP routes missing. Triggering DiscordWarpRoutes task..."
+                Start-ScheduledTask -TaskName "DiscordWarpRoutes" -ErrorAction SilentlyContinue
+                Start-Sleep -Seconds 2
+            } else {
+                try {
+                    $nh = "192.0.2.1"
+                    $ranges = @('172.64.0.0/13', '104.16.0.0/12', '104.24.0.0/14', '162.159.0.0/16')
+                    foreach ($r in $ranges) {
+                        $ex = Get-NetRoute -DestinationPrefix $r -InterfaceAlias 'CloudflareWARP' -ErrorAction SilentlyContinue
+                        if (-not $ex) {
+                            New-NetRoute -DestinationPrefix $r -InterfaceAlias 'CloudflareWARP' -NextHop $nh -ErrorAction SilentlyContinue | Out-Null
+                        }
+                    }
+                    Write-Log "Discord WARP routes restored directly."
+                } catch { }
+            }
         }
     } catch {
         Write-Log "Route check warning: $_"
