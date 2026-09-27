@@ -95,6 +95,18 @@ function Restore-WarpRoutes {
     } catch { }
 }
 
+function Test-DiscordInCall {
+    if (-not (Test-Path $LogFile)) { return $false }
+    $recent = Get-Content $LogFile -Tail 100 -ErrorAction SilentlyContinue
+    if (-not $recent) { return $false }
+    $inCall = $false
+    foreach ($line in $recent) {
+        if ($line -match 'RTC connection state:.*RTC_CONNECTED') { $inCall = $true }
+        if ($line -match 'RTC connection state:.*(?:DISCONNECTED|RTC_DISCONNECTED)') { $inCall = $false }
+    }
+    return $inCall
+}
+
 function Test-Recent429 {
     param(
         [double]$Minutes = 2,
@@ -105,10 +117,12 @@ function Test-Recent429 {
     $lines = Get-Content $LogFile -Tail 250 -ErrorAction SilentlyContinue
     if (-not $lines) { return $false }
     foreach ($l in $lines) {
-        # Skip benign background WebAuthn / credentials check
-        if ($l -match 'webauthn/credentials') { continue }
+        # Skip all non-chat / background telemetry calls:
+        # webauthn, read receipts (/ack), public apps, analytics
+        if ($l -match 'webauthn|\/ack\b|applications\/public|science|experiments|tracking') { continue }
 
-        if ($l -match '\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})(?:\.\d+)?\].*?(Failed to fetch messages|(?:\/channels\/|\/messages\/|\/profile).*?\[429\]|\[429\].*?(?:\/channels\/|\/messages\/|\/profile)|rate limited)') {
+        # ONLY match actual channel message loading failures that break user UI
+        if ($l -match '\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})(?:\.\d+)?\].*?(Failed to fetch messages|GET \/channels\/\d+\/messages.*?\[429\]|rate limited)') {
             $ts = $null
             try {
                 $ts = [datetime]::ParseExact($Matches[1], "yyyy-MM-dd HH:mm:ss", [System.Globalization.CultureInfo]::InvariantCulture)
@@ -138,17 +152,19 @@ function Rotate-WarpIp {
 }
 
 function Start-DiscordClean {
-    Write-Log "Launching Discord cleanly via shell..."
-    Start-Process -FilePath "explorer.exe" -ArgumentList "discord:"
-    Start-Sleep -Seconds 5
-    $running = Get-Process Discord -ErrorAction SilentlyContinue
-    if (-not $running) {
-        $discordDir = Join-Path $env:LOCALAPPDATA "Discord"
-        $upd = Join-Path $discordDir "Update.exe"
-        if (Test-Path $upd) {
-            Start-Process -FilePath "explorer.exe" -ArgumentList "`"$upd`" --processStart Discord.exe"
-        }
+    Write-Log "Launching Discord GUI cleanly..."
+    $discordDir = Join-Path $env:LOCALAPPDATA "Discord"
+    $upd = Join-Path $discordDir "Update.exe"
+    $desktopLnk = Join-Path $env:USERPROFILE "Desktop\Discord.lnk"
+
+    if (Test-Path $desktopLnk) {
+        Start-Process -FilePath "explorer.exe" -ArgumentList "`"$desktopLnk`""
+    } elseif (Test-Path $upd) {
+        Start-Process -FilePath "cmd.exe" -ArgumentList "/c start `"`" `"$upd`" --processStart Discord.exe"
+    } else {
+        Start-Process "discord://"
     }
+    Start-Sleep -Seconds 5
 }
 
 function Restart-DiscordOnce {
@@ -186,10 +202,12 @@ try {
         $inCooldown = $sinceLastAction.TotalMinutes -lt $CooldownMinutes
 
         if ($Force -or ((Test-Recent429) -and -not $inCooldown)) {
-            if ($rotationsLastHour -ge $MaxRotationsPerHour) {
+            if (Test-DiscordInCall) {
+                Write-Log "Discord is in an active voice call. Skipping restart to protect user conversation."
+            } elseif ($rotationsLastHour -ge $MaxRotationsPerHour) {
                 Write-Log "Hourly rotation limit reached ($rotationsLastHour), waiting..."
             } else {
-                Write-Log "Real 429/message error detected! Starting recovery..."
+                Write-Log "Actual message fetch failure detected! Starting recovery..."
                 # 1. Stop Discord immediately to avoid resetting server rate-limit bucket
                 Get-Process Discord -ErrorAction SilentlyContinue | Stop-Process -Force
                 Start-Sleep -Seconds 2
