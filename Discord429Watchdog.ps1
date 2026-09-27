@@ -1,12 +1,18 @@
 # Discord 429 Watchdog - WARP IP rotation + route healing + controlled recovery
 # Multi-user safe: log/state are per-user, script can be shared
 param(
+    [switch]$Manual,
     [int]$CooldownMinutes = 3,
     [int]$CheckIntervalSeconds = 20,
     [int]$PostRotationWaitSeconds = 15,
     [switch]$Once,
     [switch]$Force
 )
+
+# Auto-start prevention: Do not run automatically on boot/logon unless explicitly triggered with -Manual
+if (-not $Manual -and -not $Force) {
+    exit 0
+}
 
 $LogFile = Join-Path $env:APPDATA "discord\logs\renderer_js.log"
 $StateFile = Join-Path $env:LOCALAPPDATA "discord-429-watchdog.state"
