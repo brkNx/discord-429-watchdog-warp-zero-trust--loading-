@@ -65,31 +65,34 @@ function Restore-WarpRoutes {
         $warpIf = Get-NetIPInterface -InterfaceAlias 'CloudflareWARP' -AddressFamily IPv4 -ErrorAction SilentlyContinue
         if (-not $warpIf -or $warpIf.ConnectionState -ne 'Connected') { return }
 
-        # Check if the Discord prefix exists on CloudflareWARP interface
-        $route = Get-NetRoute -DestinationPrefix '162.159.0.0/16' -InterfaceAlias 'CloudflareWARP' -ErrorAction SilentlyContinue
-        if (-not $route) {
-            $task = Get-ScheduledTask -TaskName "DiscordWarpRoutes" -ErrorAction SilentlyContinue
-            if ($task) {
-                Write-Log "Discord WARP routes missing. Triggering DiscordWarpRoutes task..."
-                Start-ScheduledTask -TaskName "DiscordWarpRoutes" -ErrorAction SilentlyContinue
-                Start-Sleep -Seconds 2
-            } else {
-                try {
-                    $nh = "192.0.2.1"
-                    $ranges = @('172.64.0.0/13', '104.16.0.0/12', '104.24.0.0/14', '162.159.0.0/16')
-                    foreach ($r in $ranges) {
-                        $ex = Get-NetRoute -DestinationPrefix $r -InterfaceAlias 'CloudflareWARP' -ErrorAction SilentlyContinue
-                        if (-not $ex) {
-                            New-NetRoute -DestinationPrefix $r -InterfaceAlias 'CloudflareWARP' -NextHop $nh -ErrorAction SilentlyContinue | Out-Null
-                        }
-                    }
-                    Write-Log "Discord WARP routes restored directly."
-                } catch { }
-            }
+        # Check if traffic to Discord is actively routed through CloudflareWARP
+        $route = Find-NetRoute -RemoteIPAddress '162.159.137.232' -ErrorAction SilentlyContinue
+        if ($route -and ($route.InterfaceAlias -contains 'CloudflareWARP')) {
+            return
         }
-    } catch {
-        Write-Log "Route check warning: $_"
-    }
+
+        # Fallback check: check for any Discord routes on the interface
+        $anyRoute = Get-NetRoute -InterfaceAlias 'CloudflareWARP' -ErrorAction SilentlyContinue | Where-Object {
+            $_.DestinationPrefix -like '162.159.*' -or $_.DestinationPrefix -eq '104.16.0.0/12'
+        }
+        if ($anyRoute) {
+            return
+        }
+
+        # If routes are truly missing, attempt restoration
+        Write-Log "Discord WARP routes missing. Restoring routes..."
+        $task = Get-ScheduledTask -TaskName "DiscordWarpRoutes" -ErrorAction SilentlyContinue
+        if ($task) {
+            try {
+                Start-ScheduledTask -TaskName "DiscordWarpRoutes" -ErrorAction Stop
+                Start-Sleep -Seconds 2
+            } catch {
+                warp-cli connect 2>&1 | Out-Null
+            }
+        } else {
+            warp-cli connect 2>&1 | Out-Null
+        }
+    } catch { }
 }
 
 function Test-Recent429 {
