@@ -105,7 +105,10 @@ function Test-Recent429 {
     $lines = Get-Content $LogFile -Tail 250 -ErrorAction SilentlyContinue
     if (-not $lines) { return $false }
     foreach ($l in $lines) {
-        if ($l -match '\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})(?:\.\d+)?\].*?(\[429\]|Failed to fetch messages|rate limited)') {
+        # Skip benign background WebAuthn / credentials check
+        if ($l -match 'webauthn/credentials') { continue }
+
+        if ($l -match '\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})(?:\.\d+)?\].*?(Failed to fetch messages|(?:\/channels\/|\/messages\/|\/profile).*?\[429\]|\[429\].*?(?:\/channels\/|\/messages\/|\/profile)|rate limited)') {
             $ts = $null
             try {
                 $ts = [datetime]::ParseExact($Matches[1], "yyyy-MM-dd HH:mm:ss", [System.Globalization.CultureInfo]::InvariantCulture)
@@ -118,14 +121,14 @@ function Test-Recent429 {
 
 function Rotate-WarpIp {
     Write-Log "Starting WARP recovery & IP rotation..."
+    try { warp-cli tunnel rotate-keys 2>&1 | Out-Null } catch { }
     warp-cli disconnect 2>&1 | Out-Null
     Start-Sleep -Seconds 2
     warp-cli connect 2>&1 | Out-Null
     Start-Sleep -Seconds 4
 
     # Ensure routes are restored immediately after connect
-    Start-ScheduledTask -TaskName "DiscordWarpRoutes" -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 2
+    Restore-WarpRoutes
 
     $status = (warp-cli status 2>&1 | Out-String).Trim() -replace "[\r\n]+", " "
     $trace = curl.exe -s --max-time 6 "https://www.cloudflare.com/cdn-cgi/trace" 2>$null
@@ -134,36 +137,35 @@ function Rotate-WarpIp {
     Write-Log "WARP: $status | IP: $ip"
 }
 
+function Start-DiscordClean {
+    Write-Log "Launching Discord cleanly via shell..."
+    Start-Process -FilePath "explorer.exe" -ArgumentList "discord:"
+    Start-Sleep -Seconds 5
+    $running = Get-Process Discord -ErrorAction SilentlyContinue
+    if (-not $running) {
+        $discordDir = Join-Path $env:LOCALAPPDATA "Discord"
+        $upd = Join-Path $discordDir "Update.exe"
+        if (Test-Path $upd) {
+            Start-Process -FilePath "explorer.exe" -ArgumentList "`"$upd`" --processStart Discord.exe"
+        }
+    }
+}
+
 function Restart-DiscordOnce {
+    param([int]$CoolOffSeconds = 35)
     Write-Log "Performing controlled Discord restart..."
     Get-Process Discord -ErrorAction SilentlyContinue | Stop-Process -Force
     Start-Sleep -Seconds 3
 
     # Restore routes just before launching Discord
-    Start-ScheduledTask -TaskName "DiscordWarpRoutes" -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 1
+    Restore-WarpRoutes
 
-    $discordDir = Join-Path $env:LOCALAPPDATA "Discord"
-    $upd = Join-Path $discordDir "Update.exe"
-    if (Test-Path $upd) {
-        Start-Process -FilePath $upd -ArgumentList "--processStart Discord.exe" -WorkingDirectory $discordDir
-    } else {
-        Start-Process "discord://"
+    if ($CoolOffSeconds -gt 0) {
+        Write-Log "Waiting ${CoolOffSeconds}s for Discord server rate-limit to cool down..."
+        Start-Sleep -Seconds $CoolOffSeconds
     }
 
-    # Verify launch
-    Start-Sleep -Seconds 3
-    $running = Get-Process Discord -ErrorAction SilentlyContinue
-    if (-not $running) {
-        Write-Log "Retrying Discord launch directly..."
-        $latestApp = Get-ChildItem -Directory $discordDir -Filter "app-*" | Sort-Object Name -Descending | Select-Object -First 1
-        if ($latestApp) {
-            $exe = Join-Path $latestApp.FullName "Discord.exe"
-            if (Test-Path $exe) {
-                Start-Process -FilePath $exe -WorkingDirectory $latestApp.FullName
-            }
-        }
-    }
+    Start-DiscordClean
 }
 
 Write-Log "=== Watchdog started (cooldown=${CooldownMinutes}m, interval=${CheckIntervalSeconds}s, user=$($env:USERNAME)) ==="
@@ -187,21 +189,30 @@ try {
             if ($rotationsLastHour -ge $MaxRotationsPerHour) {
                 Write-Log "Hourly rotation limit reached ($rotationsLastHour), waiting..."
             } else {
-                Write-Log "429/error detected! Starting recovery..."
-                $rotationStartTime = Get-Date
+                Write-Log "Real 429/message error detected! Starting recovery..."
+                # 1. Stop Discord immediately to avoid resetting server rate-limit bucket
+                Get-Process Discord -ErrorAction SilentlyContinue | Stop-Process -Force
+                Start-Sleep -Seconds 2
+
+                # 2. Rotate WARP keys and reconnect
                 Rotate-WarpIp
 
-                if ($PostRotationWaitSeconds -gt 0) {
-                    Start-Sleep -Seconds $PostRotationWaitSeconds
-                }
+                # 3. Wait for Discord server rate-limit to clear
+                Write-Log "Waiting 35s for Discord server-side rate-limit to clear..."
+                Start-Sleep -Seconds 35
 
-                # Only check for new errors that occurred AFTER the rotation started
-                if (Test-Recent429 -Since $rotationStartTime) {
-                    Write-Log "Errors persist after rotation, restarting Discord..."
-                    Restart-DiscordOnce
+                # 4. Start Discord cleanly
+                $launchTime = Get-Date
+                Start-DiscordClean
+                Start-Sleep -Seconds 15
+
+                # 5. Verify if message errors recur
+                if (Test-Recent429 -Since $launchTime) {
+                    Write-Log "Errors persisted on restart, performing second cool-off cycle..."
+                    Restart-DiscordOnce -CoolOffSeconds 30
                     Start-Sleep -Seconds 15
                 } else {
-                    Write-Log "Errors cleared, Discord left running."
+                    Write-Log "Discord started cleanly, messages loading normally."
                 }
 
                 $state.LastAction = (Get-Date).ToString("o")
