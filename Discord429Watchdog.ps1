@@ -9,9 +9,12 @@ param(
     [switch]$Force
 )
 
-# Auto-start prevention: Do not run automatically on boot/logon unless explicitly triggered with -Manual
-if (-not $Manual -and -not $Force) {
-    exit 0
+# Auto-start disable check: If local user configured no-autostart, only run if -Manual or -Force is passed
+$NoAutoStartFlag = Join-Path $env:LOCALAPPDATA "discord-429-watchdog.noautostart"
+if (Test-Path $NoAutoStartFlag) {
+    if (-not $Manual -and -not $Force) {
+        exit 0
+    }
 }
 
 $LogFile = Join-Path $env:APPDATA "discord\logs\renderer_js.log"

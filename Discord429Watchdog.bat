@@ -7,5 +7,5 @@ echo.
 echo Log: %LOCALAPPDATA%\discord-429-watchdog.log
 echo Close this window or press Ctrl+C to stop
 echo.
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0Discord429Watchdog.ps1" -CheckIntervalSeconds 30
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0Discord429Watchdog.ps1" -Manual -CheckIntervalSeconds 20
 pause
