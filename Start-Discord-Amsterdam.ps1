@@ -53,12 +53,16 @@ $discordExe = if ($latestApp) { Join-Path $latestApp.FullName "Discord.exe" } el
 
 if ($isReady) {
     if (Test-Path $discordExe) {
-        Start-Process -FilePath "cmd.exe" -ArgumentList "/c start `"`" `"$discordExe`" --proxy-server=`"socks5://127.0.0.1:1080`""
+        Start-Process -FilePath $discordExe -ArgumentList '--proxy-server="socks5://127.0.0.1:1080"' -WorkingDirectory (Split-Path $discordExe)
     } elseif (Test-Path $upd) {
-        Start-Process -FilePath "cmd.exe" -ArgumentList "/c start `"`" `"$upd`" --processStart Discord.exe --process-start-args=`"--proxy-server=socks5://127.0.0.1:1080`""
+        Start-Process -FilePath $upd -ArgumentList '--processStart Discord.exe --process-start-args="--proxy-server=socks5://127.0.0.1:1080"'
     } else {
         Start-Process "discord://"
     }
 } else {
-    Start-Process -FilePath "cmd.exe" -ArgumentList "/c start `"`" `"$upd`" --processStart Discord.exe"
+    if (Test-Path $upd) {
+        Start-Process -FilePath $upd -ArgumentList "--processStart Discord.exe"
+    } else {
+        Start-Process "discord://"
+    }
 }
